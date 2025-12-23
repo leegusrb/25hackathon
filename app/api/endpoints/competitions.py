@@ -6,6 +6,7 @@ from app.db.database import get_db, engine, Base
 from app.models.competition import Competition
 from app.services.competition_service import get_active_competitions_for_ai
 from app.services.crawling_service import crawl_k_startup
+from app.services.recommend import recommend_with_gpt
 
 # DB 테이블 생성 (새로 수정된 Competition 모델 반영)
 Base.metadata.create_all(bind=engine)
@@ -86,26 +87,38 @@ def get_competitions_context(db: Session = Depends(get_db)):
 
 # [실제 AI 추천 로직 구현 예시]
 @router.post("/recommend/ai")
-def recommend_by_ai(user_input: str, db: Session = Depends(get_db)):
+def recommend_by_ai(db: Session = Depends(get_db)):
     """
     사용자의 입력(user_input)과 DB의 공고 정보를 합쳐서 AI에게 추천을 요청합니다.
     """
-    # 1. DB에서 유효한 공고 데이터 가져오기
-    competitions_list = get_active_competitions_for_ai(db)
 
-    # 2. AI에게 보낼 프롬프트 구성 (JSON 문자열로 변환)
-    system_prompt = f"""
-    아래는 현재 지원 가능한 창업 공고 목록이야. JSON 형식으로 제공할게.
-    사용자의 상황에 가장 적합한 공고 3개를 골라서 추천해줘.
+    startup_profile = {
+        "team_type": "university_student",
+        "stage": "idea",
+        "domains": [
+            "AI"
+        ],
+        "core_features": [
+            "현재 구현 수준은 아이디어 단계",
+            "마감 역산 일정 관리",
+            "핵심 기능: 공모전 추천",
+            "창업 정보를 구조화해 공모전 양식에 맞게 조합하는 방식으로 차별화",
+            "서류 자동 생성"
+        ],
+        "needed_support": [
+            "사업화",
+            "기술개발(R&D)"
+        ],
+        "doc_readiness": {
+            "problem_defined": True,
+            "solution_defined": True,
+            "business_defined": True,
+            "team_defined": True
+        }
+    }
 
-    [공고 목록]
-    {json.dumps(competitions_list, ensure_ascii=False, indent=2)}
-    """
+    context_data = get_active_competitions_for_ai(db)
 
-    # 3. 여기서 AI 서비스 호출 (openai.ChatCompletion 등)
-    # response = call_openai(system_prompt, user_input)
+    competitions_list = recommend_with_gpt(startup_profile, context_data)
 
-    # return response
-
-    # (테스트용 반환)
-    return {"message": "AI 프롬프트가 준비되었습니다.", "prompt_preview": system_prompt[:500] + "..."}
+    return competitions_list

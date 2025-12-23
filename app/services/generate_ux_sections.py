@@ -74,17 +74,3 @@ def generate_ux_sections(items):
     )
 
     return safe_json_load(response.output_text)
-
-if __name__ == "__main__":
-    # 입력: question.json (질문/답변 리스트)
-    with open("question.json", "r", encoding="utf-8") as f:
-        items = json.load(f)
-
-    result = generate_ux_sections(items)
-
-    # 출력: ux_sections_result.json
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    with open("sections_result.json", "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    print("sections_result.json 생성 완료")
