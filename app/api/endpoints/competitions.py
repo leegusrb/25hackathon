@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-import json
 
 from app.db.database import get_db, engine, Base
 from app.models.competition import Competition
@@ -8,7 +7,6 @@ from app.services.competition_service import get_active_competitions_for_ai
 from app.services.crawling_service import crawl_k_startup
 from app.services.recommend import recommend_with_gpt
 
-# DB 테이블 생성 (새로 수정된 Competition 모델 반영)
 Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
@@ -65,23 +63,6 @@ def sync_competitions(db: Session = Depends(get_db)):
     return {
         "status": "success",
         "message": f"총 {len(crawled_data)}개 탐색. 신규: {saved_count}, 업데이트: {updated_count}"
-    }
-
-
-# [AI 추천을 위한 데이터 준비 테스트용 API]
-@router.get("/ai-context")
-def get_competitions_context(db: Session = Depends(get_db)):
-    """
-    AI에게 보낼 공고문 데이터셋을 미리 확인하는 API입니다.
-    날짜가 지난 공고는 제외되고, 필요한 필드만 JSON으로 반환됩니다.
-    """
-    # 1. 서비스 함수 호출 -> 필터링된 데이터 리스트 획득
-    context_data = get_active_competitions_for_ai(db)
-
-    # 2. 결과 확인 (실제 AI 호출 시에는 이 데이터를 prompt에 포함시킵니다)
-    return {
-        "count": len(context_data),
-        "data": context_data
     }
 
 
