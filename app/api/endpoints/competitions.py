@@ -68,18 +68,42 @@ def sync_competitions(db: Session = Depends(get_db)):
     }
 
 
-# [실제 AI 추천 로직 구현 예시]
 @router.post("/recommend/{id}")
 def recommend_by_ai(id: int, db: Session = Depends(get_db)):
     """
-    사용자의 입력(user_input)과 DB의 공고 정보를 합쳐서 AI에게 추천을 요청합니다.
+    AI 추천 결과를 반환하며, AI가 정제한 제출서류 목록을 DB에 업데이트합니다.
     """
-
+    # 1. 프로젝트 정보 조회
     db_project = db.query(Project).filter(Project.id == id).first()
     startup_profile = db_project.startup_item_core
 
+    # 2. 추천 대상 공모전 후보군 조회
     context_data = get_active_competitions_for_ai(db)
 
-    competitions_list = recommend_with_gpt(startup_profile, context_data)
+    # 3. GPT를 통한 추천 실행
+    ai_result = recommend_with_gpt(startup_profile, context_data)
 
-    return competitions_list
+    # ai_result 구조 예시: {"recommendations": [...]}
+    recommendations = ai_result.get("recommendations", [])
+
+    # 4. [정렬] 점수(score) 내림차순 정렬 (Python 레벨에서 확실하게 처리)
+    recommendations.sort(key=lambda x: int(x.get("score", 0)), reverse=True)
+
+    # 5. [DB 저장] AI가 정제해준 서류 목록(List)을 DB에 저장 (업데이트)
+    for rec in recommendations:
+        comp_id = int(rec["competition_id"])
+        clean_docs = rec["required_documents"]  # 리스트 형태
+
+        # 해당 공모전 DB 레코드 찾기
+        comp_record = db.query(Competition).filter(Competition.id == comp_id).first()
+        if comp_record:
+            # 기존 텍스트 대신 깔끔한 리스트로 덮어쓰기
+            comp_record.required_docs = clean_docs
+
+    db.commit()  # 변경사항 저장
+
+    # 6. 프론트엔드에 결과 반환 (정렬된 리스트)
+    return {
+        "status": "success",
+        "recommendations": recommendations
+    }
