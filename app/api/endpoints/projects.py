@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.models.project import Project
 from app.db.database import get_db, engine, Base
+from app.services.business_plan_result import generate_business_plan
 from app.services.generate_core_and_profile import generate_core_and_profile
+from app.services.pdf_to_template import main
 
 # DB 테이블 생성 (앱 시작 시 테이블이 없으면 자동 생성)
 Base.metadata.create_all(bind=engine)
@@ -91,16 +93,12 @@ async def upload_project_pdf(
 
         await file.seek(0)  # 파일 포인터 초기화
 
-        db_project.pdf_file_path = file_location
+        core = db_project.startup_item_core
+        template = main(file_location)
 
-        db.commit()
-        db.refresh(db_project)
+        business_plan = generate_business_plan(core, template)
 
-        return {
-            "status": "success",
-            "message": "파일 처리 완료 (로컬 저장 + 텍스트 추출 + AI 전송)",
-            "file_path": file_location,
-        }
+        return business_plan
 
     except Exception as e:
         print(f"Error: {e}")
