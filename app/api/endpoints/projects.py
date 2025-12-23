@@ -4,6 +4,7 @@ from app.schemas.project import ProjectCreate, ProjectResponse
 from app.models.project import Project
 from app.db.database import get_db, engine, Base
 from app.services.ai_service import generate_project_analysis
+from app.services.generate_ux_sections import generate_ux_sections
 
 # DB 테이블 생성 (앱 시작 시 테이블이 없으면 자동 생성)
 Base.metadata.create_all(bind=engine)
@@ -17,12 +18,20 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     # 각 항목을 dict로 변환하여 리스트 형태로 DB에 저장해야 합니다.
     answers_data = [answer.model_dump() for answer in project.answers]
 
+    project_info = {
+        "team_name": project.team_name,
+        "answers": answers_data
+    }
+
+    generated_docs = generate_ux_sections(project_info)
+
     db_project = Project(
         team_name=project.team_name,
-
-        # JSON 컬럼에 리스트(List[dict])를 그대로 저장
-        answers_json=answers_data
+        answers_json=answers_data,
+        generated_docs=generated_docs
     )
+
+    print(generated_docs)
 
     db.add(db_project)
     db.commit()
