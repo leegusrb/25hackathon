@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List
-import random
+import json
 
 from app.db.database import get_db, engine, Base
 from app.models.competition import Competition
+from app.services.competition_service import get_active_competitions_for_ai
 from app.services.crawling_service import crawl_k_startup
 
 # DB 테이블 생성 (새로 수정된 Competition 모델 반영)
@@ -66,4 +66,46 @@ def sync_competitions(db: Session = Depends(get_db)):
         "message": f"총 {len(crawled_data)}개 탐색. 신규: {saved_count}, 업데이트: {updated_count}"
     }
 
-# [추가] 추천/조회 API도 필요하다면 DB의 데이터를 반환하도록 수정해야 합니다.
+
+# [AI 추천을 위한 데이터 준비 테스트용 API]
+@router.get("/ai-context")
+def get_competitions_context(db: Session = Depends(get_db)):
+    """
+    AI에게 보낼 공고문 데이터셋을 미리 확인하는 API입니다.
+    날짜가 지난 공고는 제외되고, 필요한 필드만 JSON으로 반환됩니다.
+    """
+    # 1. 서비스 함수 호출 -> 필터링된 데이터 리스트 획득
+    context_data = get_active_competitions_for_ai(db)
+
+    # 2. 결과 확인 (실제 AI 호출 시에는 이 데이터를 prompt에 포함시킵니다)
+    return {
+        "count": len(context_data),
+        "data": context_data
+    }
+
+
+# [실제 AI 추천 로직 구현 예시]
+@router.post("/recommend/ai")
+def recommend_by_ai(user_input: str, db: Session = Depends(get_db)):
+    """
+    사용자의 입력(user_input)과 DB의 공고 정보를 합쳐서 AI에게 추천을 요청합니다.
+    """
+    # 1. DB에서 유효한 공고 데이터 가져오기
+    competitions_list = get_active_competitions_for_ai(db)
+
+    # 2. AI에게 보낼 프롬프트 구성 (JSON 문자열로 변환)
+    system_prompt = f"""
+    아래는 현재 지원 가능한 창업 공고 목록이야. JSON 형식으로 제공할게.
+    사용자의 상황에 가장 적합한 공고 3개를 골라서 추천해줘.
+
+    [공고 목록]
+    {json.dumps(competitions_list, ensure_ascii=False, indent=2)}
+    """
+
+    # 3. 여기서 AI 서비스 호출 (openai.ChatCompletion 등)
+    # response = call_openai(system_prompt, user_input)
+
+    # return response
+
+    # (테스트용 반환)
+    return {"message": "AI 프롬프트가 준비되었습니다.", "prompt_preview": system_prompt[:500] + "..."}
