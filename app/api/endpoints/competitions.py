@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
+from openai import project
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db, engine, Base
 from app.models.competition import Competition
+from app.models.project import Project
 from app.services.competition_service import get_active_competitions_for_ai
 from app.services.crawling_service import crawl_k_startup
 from app.services.recommend import recommend_with_gpt
@@ -67,36 +69,14 @@ def sync_competitions(db: Session = Depends(get_db)):
 
 
 # [실제 AI 추천 로직 구현 예시]
-@router.post("/recommend/ai")
-def recommend_by_ai(db: Session = Depends(get_db)):
+@router.post("/recommend/{id}")
+def recommend_by_ai(id: int, db: Session = Depends(get_db)):
     """
     사용자의 입력(user_input)과 DB의 공고 정보를 합쳐서 AI에게 추천을 요청합니다.
     """
 
-    startup_profile = {
-        "team_type": "university_student",
-        "stage": "idea",
-        "domains": [
-            "AI"
-        ],
-        "core_features": [
-            "현재 구현 수준은 아이디어 단계",
-            "마감 역산 일정 관리",
-            "핵심 기능: 공모전 추천",
-            "창업 정보를 구조화해 공모전 양식에 맞게 조합하는 방식으로 차별화",
-            "서류 자동 생성"
-        ],
-        "needed_support": [
-            "사업화",
-            "기술개발(R&D)"
-        ],
-        "doc_readiness": {
-            "problem_defined": True,
-            "solution_defined": True,
-            "business_defined": True,
-            "team_defined": True
-        }
-    }
+    db_project = db.query(Project).filter(Project.id == id).first()
+    startup_profile = db_project.startup_item_core
 
     context_data = get_active_competitions_for_ai(db)
 
