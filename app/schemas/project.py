@@ -11,9 +11,6 @@ class QAPair(BaseModel):
 class ProjectCreate(BaseModel):
     # 필터링용 핵심 데이터 (DB 컬럼으로 따로 관리되는 애들)
     team_name: str
-    domain: str
-    stage: str
-    target_award: str
 
     # [핵심 변경] 계층형 객체 대신 -> 질문/답변 리스트로 변경
     answers: List[QAPair]

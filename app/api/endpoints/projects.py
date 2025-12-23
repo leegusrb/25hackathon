@@ -18,9 +18,6 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
 
     db_project = Project(
         team_name=project.team_name,
-        domain=project.domain,
-        stage=project.stage,
-        target_award=project.target_award,
 
         # JSON 컬럼에 리스트(List[dict])를 그대로 저장
         answers_json=answers_data
@@ -35,9 +32,6 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     return ProjectResponse(
         id=db_project.id,
         team_name=db_project.team_name,
-        domain=db_project.domain,
-        stage=db_project.stage,
-        target_award=db_project.target_award,
         answers=db_project.answers_json,
         generated_docs=db_project.generated_docs
     )
@@ -53,9 +47,6 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return ProjectResponse(
         id=db_project.id,
         team_name=db_project.team_name,
-        domain=db_project.domain,
-        stage=db_project.stage,
-        target_award=db_project.target_award,
         # DB에 저장된 리스트형 JSON이 스키마의 List[QAPair]로 자동 매핑됨
         answers=db_project.answers_json,
         generated_docs=db_project.generated_docs
