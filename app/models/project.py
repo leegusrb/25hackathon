@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, Text
+from sqlalchemy import Column, Integer, String, JSON
 from app.db.database import Base
 
 
@@ -9,5 +9,6 @@ class Project(Base):
 
     team_name = Column(String, index=True)  # 팀명
     answers_json = Column(JSON)
-    generated_docs = Column(JSON, default={})
+    startup_item_core = Column(JSON, default={})
+    startup_reco_profile = Column(JSON, default={})
     pdf_file_path = Column(String, nullable=True)

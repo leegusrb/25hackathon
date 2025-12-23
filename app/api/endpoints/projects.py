@@ -6,8 +6,7 @@ from sqlalchemy.orm import Session
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.models.project import Project
 from app.db.database import get_db, engine, Base
-from app.services.ai_service import generate_project_analysis
-from app.services.generate_ux_sections import generate_ux_sections
+from app.services.generate_core_and_profile import generate_core_and_profile
 
 # DB 테이블 생성 (앱 시작 시 테이블이 없으면 자동 생성)
 Base.metadata.create_all(bind=engine)
@@ -25,17 +24,13 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     # 각 항목을 dict로 변환하여 리스트 형태로 DB에 저장해야 합니다.
     answers_data = [answer.model_dump() for answer in project.answers]
 
-    project_info = {
-        "team_name": project.team_name,
-        "answers": answers_data
-    }
-
-    generated_docs = generate_ux_sections(project_info)
+    generated_docs = generate_core_and_profile(answers_data)
 
     db_project = Project(
         team_name=project.team_name,
         answers_json=answers_data,
-        generated_docs=generated_docs
+        startup_item_core=generated_docs["startup_item_core"],
+        startup_reco_profile=generated_docs["startup_reco_profile"]
     )
 
     print(generated_docs)
@@ -50,7 +45,8 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
         id=db_project.id,
         team_name=db_project.team_name,
         answers=db_project.answers_json,
-        generated_docs=db_project.generated_docs
+        startup_item_core=db_project.startup_item_core,
+        startup_reco_profile=db_project.startup_reco_profile
     )
 
 
@@ -66,48 +62,8 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         team_name=db_project.team_name,
         # DB에 저장된 리스트형 JSON이 스키마의 List[QAPair]로 자동 매핑됨
         answers=db_project.answers_json,
-        generated_docs=db_project.generated_docs
-    )
-
-
-# [추가 기능] 프로젝트 답변을 바탕으로 AI 분석/요약 실행 후 DB 저장
-@router.post("/{project_id}/analyze", response_model=ProjectResponse)
-def analyze_project_answers(project_id: int, db: Session = Depends(get_db)):
-    """
-    특정 프로젝트의 인터뷰 내용(answers)을 AI로 분석하여
-    generated_docs 컬럼에 JSON 형태로 저장합니다.
-    """
-    # 1. 프로젝트 조회
-    db_project = db.query(Project).filter(Project.id == project_id).first()
-    if db_project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # 2. 분석할 데이터가 있는지 확인
-    if not db_project.answers_json:
-        raise HTTPException(status_code=400, detail="인터뷰 답변 데이터가 없습니다.")
-
-    # 3. AI 서비스 호출 (project_info를 dict로 구성해서 전달)
-    project_info = {
-        "team_name": db_project.team_name,
-        "answers": db_project.answers_json
-    }
-
-    # AI가 반환한 Dict (JSON 구조)
-    ai_result_json = generate_project_analysis(project_info)
-
-    # 4. DB 업데이트 (JSON 컬럼에 저장)
-    # SQLAlchemy가 JSON 변경을 감지하도록 새로운 값을 할당
-    db_project.generated_docs = ai_result_json
-
-    db.commit()
-    db.refresh(db_project)
-
-    # 5. 결과 반환
-    return ProjectResponse(
-        id=db_project.id,
-        team_name=db_project.team_name,
-        answers=db_project.answers_json,
-        generated_docs=db_project.generated_docs
+        startup_item_core=db_project.startup_item_core,
+        startup_reco_profile=db_project.startup_reco_profile
     )
 
 
