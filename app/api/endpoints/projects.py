@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import shutil
+
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.models.project import Project
@@ -10,6 +13,10 @@ from app.services.generate_ux_sections import generate_ux_sections
 Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
+
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
 # [기능 1] 질문/답변 페이지 제출 -> DB 저장
 @router.post("/", response_model=ProjectResponse)
@@ -102,3 +109,43 @@ def analyze_project_answers(project_id: int, db: Session = Depends(get_db)):
         answers=db_project.answers_json,
         generated_docs=db_project.generated_docs
     )
+
+
+@router.post("/{project_id}/upload-pdf")
+async def upload_project_pdf(
+        project_id: int,
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db)
+):
+    """
+    PDF를 1)서버에 저장, 2)텍스트 추출, 3)AI(OpenAI)에 업로드합니다.
+    """
+    # 1. 프로젝트 확인
+    db_project = db.query(Project).filter(Project.id == project_id).first()
+    if db_project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 2. 로컬 파일 저장
+    safe_filename = f"{project_id}_{file.filename}"
+    file_location = os.path.join(UPLOAD_DIR, safe_filename)
+
+    try:
+        with open(file_location, "wb+") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        await file.seek(0)  # 파일 포인터 초기화
+
+        db_project.pdf_file_path = file_location
+
+        db.commit()
+        db.refresh(db_project)
+
+        return {
+            "status": "success",
+            "message": "파일 처리 완료 (로컬 저장 + 텍스트 추출 + AI 전송)",
+            "file_path": file_location,
+        }
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="파일 처리 중 오류가 발생했습니다.")

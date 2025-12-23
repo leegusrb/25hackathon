@@ -9,3 +9,5 @@ sqlalchemy
 requests
 beautifulsoup4
 lxml
+pypdf
+python-multipart
