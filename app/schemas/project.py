@@ -1,36 +1,55 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 
-# [수정] 질문-답변 쌍 하나를 나타내는 스키마
+
+# [기존 코드 유지] 질문-답변 쌍
 class QAPair(BaseModel):
-    question_id: str  # 예: "1-1"
-    question: str     # 예: "서비스 이름이 뭔가요?"
-    answer: str       # 예: "STARTMATE"
+    question_id: str
+    question: str
+    answer: str
 
-# [수정] 메인 생성 스키마
+
+# [기존 코드 유지] 프로젝트 생성 스키마
 class ProjectCreate(BaseModel):
-    # 필터링용 핵심 데이터 (DB 컬럼으로 따로 관리되는 애들)
     team_name: str
-
-    # [핵심 변경] 계층형 객체 대신 -> 질문/답변 리스트로 변경
     answers: List[QAPair]
 
-# [추가] AI 분석 결과 내부의 'sections' 리스트 아이템
-class AnalysisSection(BaseModel):
+
+# [신규] 프론트엔드 응답용 섹션 모델 (bullets 제외)
+class SectionContent(BaseModel):
     key: str
     title: str
     content: str
-    bullets: List[str]
 
-# [추가] AI 분석 결과 전체 구조
-class AnalysisResult(BaseModel):
-    language: str
-    sections: List[AnalysisSection]
 
-# [수정] ProjectResponse 업데이트 (generated_docs의 타입을 명확히 하거나 Dict 유지)
+# [수정] 프로젝트 응답 스키마
 class ProjectResponse(ProjectCreate):
     id: int
-    generated_docs: Optional[Dict[str, Any]] = {}  # 유연성을 위해 Dict로 유지하되, 내용은 위 AnalysisResult 형태임
+
+    # [수정] 반환 타입을 Dict가 아닌 '요약된 섹션 리스트'로 변경
+    generated_docs: Optional[List[SectionContent]] = []
 
     class Config:
         from_attributes = True
+
+    # [추가] DB의 전체 JSON 데이터에서 'content' 부분만 추출하여 응답 형식으로 변환
+    @validator('generated_docs', pre=True)
+    def extract_content_only(cls, v):
+        # 1. 값이 없으면 빈 리스트 반환
+        if not v:
+            return []
+
+        # 2. DB에 저장된 값이 전체 JSON(Dict) 형태인 경우 -> 필터링 수행
+        if isinstance(v, dict) and "sections" in v:
+            return [
+                {
+                    "key": section.get("key"),
+                    "title": section.get("title"),
+                    "content": section.get("content")
+                    # bullets는 여기서 제외됨
+                }
+                for section in v["sections"]
+            ]
+
+        # 3. 그 외의 경우(이미 리스트이거나 형식이 안 맞는 경우) 그대로 반환 시도
+        return v
