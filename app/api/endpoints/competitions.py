@@ -1,33 +1,69 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from typing import List
 import random
 
-from app.schemas.competition import CompetitionDetail
-from app.db.mock_data import fake_competitions
+from app.db.database import get_db, engine, Base
+from app.models.competition import Competition
+from app.services.crawling_service import crawl_k_startup
+
+# DB 테이블 생성 (새로 수정된 Competition 모델 반영)
+Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
 
 
-# [기능 1-2] 공모전 추천 API (현재: 랜덤 3개 반환)
-# 나중에는 POST로 바꾸고 사용자 입력(domain, interest)을 받아서 필터링해야 함
-@router.get("/recommend", response_model=List[CompetitionDetail])
-def recommend_competitions():
+@router.post("/sync")
+def sync_competitions(db: Session = Depends(get_db)):
     """
-    전체 공모전 목록 중 랜덤으로 3개를 선택하여 반환합니다.
-    (데이터가 3개 미만이면 전체를 반환)
+    K-Startup 공고를 크롤링하여 요청된 11가지 항목을 DB에 저장합니다.
     """
-    all_competitions = list(fake_competitions.values())
+    crawled_data = crawl_k_startup(page_limit=1)
 
-    # 데이터가 적을 경우 에러 방지
-    if len(all_competitions) <= 3:
-        return all_competitions
+    saved_count = 0
+    updated_count = 0
 
-    return random.sample(all_competitions, 3)
+    for item in crawled_data:
+        # 이미 존재하는 공고인지 확인 (external_id 기준)
+        existing = db.query(Competition).filter(Competition.external_id == item["external_id"]).first()
 
+        if existing:
+            # 이미 있으면 업데이트 (선택 사항)
+            existing.name = item["name"]
+            existing.deadline = item["deadline"]
+            existing.tracks = item["tracks"]
+            existing.region = item["region"]
+            existing.target = item["target"]
+            existing.age = item["age"]
+            existing.period = item["period"]
+            existing.experience = item["experience"]
+            existing.organizer = item["organizer"]
+            existing.required_docs = item["required_docs"]
+            existing.url = item["url"]
+            updated_count += 1
+        else:
+            # 없으면 신규 생성
+            new_comp = Competition(
+                external_id=item["external_id"],
+                name=item["name"],
+                deadline=item["deadline"],
+                tracks=item["tracks"],
+                region=item["region"],
+                target=item["target"],
+                age=item["age"],
+                period=item["period"],
+                experience=item["experience"],
+                organizer=item["organizer"],
+                required_docs=item["required_docs"],
+                url=item["url"]
+            )
+            db.add(new_comp)
+            saved_count += 1
 
-# [기능 1-3] 공모전 상세 조회
-@router.get("/{competition_id}", response_model=CompetitionDetail)
-def get_competition_detail(competition_id: int):
-    if competition_id not in fake_competitions:
-        raise HTTPException(status_code=404, detail="Competition not found")
-    return fake_competitions[competition_id]
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"총 {len(crawled_data)}개 탐색. 신규: {saved_count}, 업데이트: {updated_count}"
+    }
+
+# [추가] 추천/조회 API도 필요하다면 DB의 데이터를 반환하도록 수정해야 합니다.

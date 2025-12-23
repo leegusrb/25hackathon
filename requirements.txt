@@ -6,3 +6,6 @@ python-dotenv
 openai
 httpx
 sqlalchemy
+requests
+beautifulsoup4
+lxml
