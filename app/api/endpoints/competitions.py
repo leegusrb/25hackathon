@@ -71,10 +71,14 @@ def sync_competitions(db: Session = Depends(get_db)):
 @router.post("/recommend/{id}")
 def recommend_by_ai(id: int, db: Session = Depends(get_db)):
     """
-    AI 추천 결과를 반환하며, AI가 정제한 제출서류 목록을 DB에 업데이트합니다.
+    AI 추천 결과를 기반으로 DB에서 상세 정보를 조회하여 프론트엔드에 필요한 형태로 반환합니다.
+    동시에 AI가 정제한 제출서류 목록을 DB에 업데이트합니다.
     """
     # 1. 프로젝트 정보 조회
     db_project = db.query(Project).filter(Project.id == id).first()
+    if not db_project:
+        return {"status": "error", "message": "Project not found"}
+
     startup_profile = db_project.startup_item_core
 
     # 2. 추천 대상 공모전 후보군 조회
@@ -83,27 +87,46 @@ def recommend_by_ai(id: int, db: Session = Depends(get_db)):
     # 3. GPT를 통한 추천 실행
     ai_result = recommend_with_gpt(startup_profile, context_data)
 
-    # ai_result 구조 예시: {"recommendations": [...]}
-    recommendations = ai_result.get("recommendations", [])
+    # ai_result 구조: {"recommendations": [{"competition_id": "...", ...}, ...]}
+    raw_recommendations = ai_result.get("recommendations", [])
 
-    # 4. [정렬] 점수(score) 내림차순 정렬 (Python 레벨에서 확실하게 처리)
-    recommendations.sort(key=lambda x: int(x.get("score", 0)), reverse=True)
+    # 4. [정렬] 점수(score) 내림차순 정렬
+    raw_recommendations.sort(key=lambda x: int(x.get("score", 0)), reverse=True)
 
-    # 5. [DB 저장] AI가 정제해준 서류 목록(List)을 DB에 저장 (업데이트)
-    for rec in recommendations:
-        comp_id = int(rec["competition_id"])
-        clean_docs = rec["required_documents"]  # 리스트 형태
+    final_result = []
 
-        # 해당 공모전 DB 레코드 찾기
+    # 5. [DB 상세 정보 병합] AI 결과 + DB 상세 정보 합치기
+    for rec in raw_recommendations:
+        try:
+            comp_id = int(rec["competition_id"])
+        except ValueError:
+            continue
+
+        # DB에서 해당 공모전 상세 정보 조회
         comp_record = db.query(Competition).filter(Competition.id == comp_id).first()
+
         if comp_record:
-            # 기존 텍스트 대신 깔끔한 리스트로 덮어쓰기
-            comp_record.required_docs = clean_docs
+            # (1) DB 업데이트: AI가 정제해준 서류 목록(List) 저장
+            # 주의: Competition 모델의 required_docs가 JSON 타입이어야 함
+            comp_record.required_docs = rec["required_documents"]
 
-    db.commit()  # 변경사항 저장
+            # (2) 프론트엔드 응답 구성: 필요한 필드 모두 포함
+            item = {
+                "id": comp_record.id,
+                "title": comp_record.name,  # 제목
+                "organizer": comp_record.organizer,  # 주관기관
+                "deadline": comp_record.deadline,  # 마감일
+                "score": rec["score"],
+                "keywords": rec["keywords"],
+                "required_documents": rec["required_documents"]
+            }
+            final_result.append(item)
 
-    # 6. 프론트엔드에 결과 반환 (정렬된 리스트)
+    # 변경된 서류 목록 DB 저장
+    db.commit()
+
+    # 6. 최종 결과 반환
     return {
         "status": "success",
-        "recommendations": recommendations
+        "recommendations": final_result
     }
